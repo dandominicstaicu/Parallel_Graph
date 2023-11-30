@@ -10,7 +10,7 @@ src:
 
 check: clean
 	make -i SRC_PATH=$(SRC_PATH)
-	SRC_PATH=$(SRC_PATH) python checker.py
+	SRC_PATH=$(SRC_PATH) python3 checker.py
 
 lint:
 	-cd $(SRC_PATH)/.. && checkpatch.pl -f src/*.c

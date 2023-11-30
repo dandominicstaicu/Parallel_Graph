@@ -27,6 +27,11 @@ typedef struct os_threadpool {
 	os_list_node_t head;
 
 	/* TODO: Define threapool / queue synchronization data. */
+	int shutdown;
+	
+	pthread_mutex_t task_lock;
+	pthread_cond_t task_cond;
+
 } os_threadpool_t;
 
 os_task_t *create_task(void (*f)(void *), void *arg, void (*destroy_arg)(void *));
@@ -37,6 +42,8 @@ void destroy_threadpool(os_threadpool_t *tp);
 
 void enqueue_task(os_threadpool_t *q, os_task_t *t);
 os_task_t *dequeue_task(os_threadpool_t *tp);
-void wait_for_completion(os_threadpool_t *tp);
+// void wait_for_completion(os_threadpool_t *tp);
+void wait_for_completion(os_threadpool_t *tp, int (*processing_done)(os_threadpool_t *));
+
 
 #endif
