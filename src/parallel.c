@@ -105,6 +105,18 @@ static void process_node(unsigned int idx)
 	}
 }
 
+void free_graph(os_graph_t *graph)
+{
+	for (unsigned int i = 0; i < graph->num_nodes; ++i) {
+		free(graph->nodes[i]->neighbours);
+		free(graph->nodes[i]);
+	}
+
+	free(graph->nodes);
+	free(graph->visited);
+	free(graph);
+}
+
 int main(int argc, char *argv[])
 {
 	FILE *input_file;
@@ -138,6 +150,10 @@ int main(int argc, char *argv[])
 	/* --------------------------- Thread Pool --------------------------- */
 
 	printf("%d", sum);
+
+	free(visit_locks);
+	free_graph(graph);
+	fclose(input_file);
 
 	return 0;
 }
