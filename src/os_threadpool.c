@@ -9,6 +9,8 @@
 #include "log/log.h"
 #include "utils.h"
 
+extern queued_tasks;
+
 /* Create a task that would be executed by a thread. */
 os_task_t *create_task(void (*action)(void *), void *arg, void (*destroy_arg)(void *))
 {
@@ -111,12 +113,16 @@ static void *thread_loop_function(void *arg)
 }
 
 /* Wait completion of all threads. This is to be called by the main thread. */
-void wait_for_completion(os_threadpool_t *tp, int (*processing_done)(os_threadpool_t *))
+void wait_for_completion(os_threadpool_t *tp)
 {
 	/* TODO: Wait for all worker threads. Use synchronization. */
-	while (!processing_done(tp)) {
-		;
-	}
+	// while (!processing_done(tp)) {
+	// 	;
+	// }
+
+	do {
+		pthread_cond_wait(&tp->finished_tasks_cond, &tp->queued_tasks_mutex);
+	} while (queued_tasks > 0);
 
 	pthread_mutex_lock(&tp->task_lock);
 	tp->shutdown = 1;

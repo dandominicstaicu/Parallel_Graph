@@ -20,6 +20,9 @@ static os_threadpool_t *tp;
 pthread_mutex_t sum_lock;
 pthread_mutex_t *visit_locks;
 
+
+int queued_tasks;
+
 /* Variable used to count the number of visited nodes */
 unsigned int nr_visited = 0;
 
@@ -68,6 +71,11 @@ void process_node_function(void *arg)
 			tmp->index = node->neighbours[i];
 
 			os_task_t *task = create_task(process_node_function, (void*) tmp, os_destroy_arg);
+			
+			pthread_mutex_lock(&tp->queued_tasks_mutex);
+			++queued_tasks;
+			pthread_mutex_unlock(&tp->queued_tasks_mutex);
+			
 			enqueue_task(tp, task);
 
 			// printf("Enqueued node %d\n", i);
@@ -75,6 +83,12 @@ void process_node_function(void *arg)
 
 		pthread_mutex_unlock(&visit_locks[node->neighbours[i]]);
 	}
+
+	pthread_mutex_lock(&tp->queued_tasks_mutex);
+	if (--queued_tasks == 0) {
+		pthread_cond_signal(&tp->finished_tasks_cond);
+	}
+	pthread_mutex_unlock(&tp->queued_tasks_mutex);
 }
 
 static void process_node(unsigned int idx)
@@ -82,7 +96,7 @@ static void process_node(unsigned int idx)
 	/* TODO: Implement thread-pool based processing of graph. */
 
 	// TODO: idx is always 0, remeber this when you move the code back in main
-	for (unsigned int i = idx; i < graph->num_nodes; ++i) {
+	for (unsigned int i = idx; i < 1; ++i) {
 		pthread_mutex_lock(&visit_locks[i]);
 
 		if (graph->visited[i] == NOT_VISITED) {
@@ -96,6 +110,11 @@ static void process_node(unsigned int idx)
 
 			// new_task = create_task(process_neighbours, (void *) new_arg, os_destroy_arg);
 			os_task_t *task = create_task(process_node_function, (void*) arg, os_destroy_arg);
+			
+			pthread_mutex_lock(&tp->queued_tasks_mutex);
+			++queued_tasks;
+			pthread_mutex_unlock(&tp->queued_tasks_mutex);
+
 			enqueue_task(tp, task);
 
 			// printf("Enqueued node %d\n", i);
@@ -136,6 +155,8 @@ int main(int argc, char *argv[])
 	tp = create_threadpool(NUM_THREADS);
 	
 	pthread_mutex_init(&sum_lock, NULL);
+	pthread_cond_init(&tp->finished_tasks_cond, NULL);
+	pthread_mutex_init(&tp->queued_tasks_mutex, NULL);
 
 	visit_locks = (pthread_mutex_t *) malloc(graph->num_nodes * sizeof(pthread_mutex_t));
 	for (unsigned int i = 0; i < graph->num_nodes; ++i) {
@@ -144,7 +165,7 @@ int main(int argc, char *argv[])
 
 	process_node(0);
 
-	wait_for_completion(tp, processing_is_done);
+	wait_for_completion(tp);
 	destroy_threadpool(tp);
 
 	/* --------------------------- Thread Pool --------------------------- */
