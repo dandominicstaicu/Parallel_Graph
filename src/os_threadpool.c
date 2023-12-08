@@ -110,9 +110,12 @@ static void *thread_loop_function(void *arg)
 /* Wait completion of all threads. This is to be called by the main thread. */
 void wait_for_completion(os_threadpool_t *tp)
 {
+
+	pthread_mutex_lock(&tp->finished_tasks_mutex);
 	do {
 		pthread_cond_wait(&tp->finished_tasks_cond, &tp->finished_tasks_mutex);
 	} while (tp->queued_tasks > 0);
+	pthread_mutex_unlock(&tp->finished_tasks_mutex);
 
 	pthread_mutex_lock(&tp->task_lock);
 	tp->shutdown = 1;
