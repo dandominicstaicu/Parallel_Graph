@@ -9,8 +9,6 @@
 #include "log/log.h"
 #include "utils.h"
 
-extern queued_tasks;
-
 /* Create a task that would be executed by a thread. */
 os_task_t *create_task(void (*action)(void *), void *arg, void (*destroy_arg)(void *))
 {
@@ -40,15 +38,11 @@ void enqueue_task(os_threadpool_t *tp, os_task_t *t)
 	assert(tp != NULL);
 	assert(t != NULL);
 
-	/* TODO: Enqueue task to the shared task queue. Use synchronization. */
-	
-	
+	/* Enqueue task to the shared task queue. Use synchronization. */
 	pthread_mutex_lock(&tp->task_lock);
 	list_add_tail(&tp->head, &t->list);
 	pthread_cond_signal(&tp->task_cond);
 	pthread_mutex_unlock(&tp->task_lock);
-
-	// printf("Enqueued task %p\n", t);
 }
 
 /*
@@ -70,7 +64,7 @@ os_task_t *dequeue_task(os_threadpool_t *tp)
 {
 	os_task_t *t = NULL;
 
-	/* TODO: Dequeue task from the shared task queue. Use synchronization. */
+	/* Dequeue task from the shared task queue. Use synchronization. */
 	pthread_mutex_lock(&tp->task_lock);
 
 	while (queue_is_empty(tp) && !tp->shutdown) {/* && not shutting down condition */
@@ -78,17 +72,18 @@ os_task_t *dequeue_task(os_threadpool_t *tp)
 	}
 
 	// If the thread pool is shutting down, release mutex and return NULL
-    if (tp->shutdown) {
-        pthread_mutex_unlock(&tp->task_lock);
-        return NULL;
-    }
+	if (tp->shutdown) {
+		pthread_mutex_unlock(&tp->task_lock);
+		return NULL;
+	}
 
 	if (!queue_is_empty(tp)) {
 		os_list_node_t *node = tp->head.next;
+
 		list_del(node);
 		t = list_entry(node, os_task_t, list);
 	}
-	
+
 	pthread_mutex_unlock(&tp->task_lock);
 
 	return t;
@@ -115,14 +110,9 @@ static void *thread_loop_function(void *arg)
 /* Wait completion of all threads. This is to be called by the main thread. */
 void wait_for_completion(os_threadpool_t *tp)
 {
-	/* TODO: Wait for all worker threads. Use synchronization. */
-	// while (!processing_done(tp)) {
-	// 	;
-	// }
-
 	do {
-		pthread_cond_wait(&tp->finished_tasks_cond, &tp->queued_tasks_mutex);
-	} while (queued_tasks > 0);
+		pthread_cond_wait(&tp->finished_tasks_cond, &tp->finished_tasks_mutex);
+	} while (tp->queued_tasks > 0);
 
 	pthread_mutex_lock(&tp->task_lock);
 	tp->shutdown = 1;
@@ -147,8 +137,11 @@ os_threadpool_t *create_threadpool(unsigned int num_threads)
 
 	/* TODO: Initialize synchronization data. */
 	tp->shutdown = 0;
+	tp->queued_tasks = 0;
 	pthread_mutex_init(&tp->task_lock, NULL);
 	pthread_cond_init(&tp->task_cond, NULL);
+	pthread_cond_init(&tp->finished_tasks_cond, NULL);
+	pthread_mutex_init(&tp->finished_tasks_mutex, NULL);
 
 	tp->num_threads = num_threads;
 	tp->threads = malloc(num_threads * sizeof(*tp->threads));
@@ -157,8 +150,6 @@ os_threadpool_t *create_threadpool(unsigned int num_threads)
 		rc = pthread_create(&tp->threads[i], NULL, &thread_loop_function, (void *) tp);
 		DIE(rc < 0, "pthread_create");
 	}
-
-	// printf("Created threadpool with %d threads\n", num_threads);
 
 	return tp;
 }
@@ -172,9 +163,12 @@ void destroy_threadpool(os_threadpool_t *tp)
 	pthread_mutex_destroy(&tp->task_lock);
 	pthread_cond_destroy(&tp->task_cond);
 
+	pthread_mutex_destroy(&tp->finished_tasks_mutex);
+	pthread_cond_destroy(&tp->finished_tasks_cond);
+
 	os_list_node_t *n, *p;
 
-	/* TODO: Cleanup synchronization data. */
+	/* Cleanup synchronization data. */
 
 	list_for_each_safe(n, p, &tp->head) {
 		list_del(n);

@@ -62,25 +62,3 @@ static inline int list_empty(os_list_node_t *head)
 			pos = tmp, tmp = pos->next)
 
 #endif
-
-
-
-// os_task_t *dequeue_task(os_threadpool_t *tp)
-// {
-// 	os_task_t *t;
-
-// 	/* TODO: Dequeue task from the shared task queue. Use synchronization. */
-// 	pthread_mutex_lock(&tp->task_lock);
-
-// 	while (queue_is_empty(tp) && !tp->shutdown) {
-// 		pthread_cond_wait(&tp->task_cond, &tp->task_lock);
-// 	}
-
-// 	if (!queue_is_empty(tp)) {
-//         t = list_entry(tp->head.next, os_task_t, list);  // Get the task from the front of the queue
-//         list_del(&t->list);  // Remove the task from the queue
-//     }
-
-//     pthread_mutex_unlock(&tp->task_lock);
-//     return t;
-// }
