@@ -39,10 +39,10 @@ void enqueue_task(os_threadpool_t *tp, os_task_t *t)
 	assert(t != NULL);
 
 	/* Enqueue task to the shared task queue. Use synchronization. */
-	pthread_mutex_lock(&tp->task_lock);
-	list_add_tail(&tp->head, &t->list);
-	pthread_cond_signal(&tp->task_cond);
-	pthread_mutex_unlock(&tp->task_lock);
+	pthread_mutex_lock(&tp->task_lock); // Lock the task queue mutex
+	list_add_tail(&tp->head, &t->list); // Add the task to the end of the queue
+	pthread_cond_signal(&tp->task_cond); // Signal a waiting thread that a task is available
+	pthread_mutex_unlock(&tp->task_lock); // Unlock the task queue mutex
 }
 
 /*
@@ -67,6 +67,7 @@ os_task_t *dequeue_task(os_threadpool_t *tp)
 	/* Dequeue task from the shared task queue. Use synchronization. */
 	pthread_mutex_lock(&tp->task_lock);
 
+	// Wait for a task to become available or for the threadpool to shut down
 	while (queue_is_empty(tp) && !tp->shutdown) {/* && not shutting down condition */
 		pthread_cond_wait(&tp->task_cond, &tp->task_lock);
 	}
@@ -77,6 +78,7 @@ os_task_t *dequeue_task(os_threadpool_t *tp)
 		return NULL;
 	}
 
+	// If there is a task in the queue, remove it and prepare to execute
 	if (!queue_is_empty(tp)) {
 		os_list_node_t *node = tp->head.next;
 
@@ -110,13 +112,13 @@ static void *thread_loop_function(void *arg)
 /* Wait completion of all threads. This is to be called by the main thread. */
 void wait_for_completion(os_threadpool_t *tp)
 {
-
+	// Wait for the signal indicating all tasks are finished
 	pthread_mutex_lock(&tp->finished_tasks_mutex);
-	do {
+	while (tp->queued_tasks > 0)
 		pthread_cond_wait(&tp->finished_tasks_cond, &tp->finished_tasks_mutex);
-	} while (tp->queued_tasks > 0);
 	pthread_mutex_unlock(&tp->finished_tasks_mutex);
 
+	// Signal all threads to shut down
 	pthread_mutex_lock(&tp->task_lock);
 	tp->shutdown = 1;
 	pthread_cond_broadcast(&tp->task_cond);
@@ -138,7 +140,7 @@ os_threadpool_t *create_threadpool(unsigned int num_threads)
 
 	list_init(&tp->head);
 
-	/* TODO: Initialize synchronization data. */
+	/* Initialize synchronization data. */
 	tp->shutdown = 0;
 	tp->queued_tasks = 0;
 	pthread_mutex_init(&tp->task_lock, NULL);

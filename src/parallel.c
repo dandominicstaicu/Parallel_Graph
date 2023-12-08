@@ -13,14 +13,15 @@
 
 #define NUM_THREADS		4
 
-static int sum;
-static os_graph_t *graph;
-static os_threadpool_t *tp;
-/* Define graph synchronization mechanisms. */
-pthread_mutex_t sum_lock;
-pthread_mutex_t *visit_locks;
+static int sum; // Global variable to store the sum of all nodes.
+static os_graph_t *graph; // Pointer to the graph
+static os_threadpool_t *tp; // Pointer to the threadpool
 
-/* Define graph task argument. */
+/* Define graph synchronization mechanisms. */
+pthread_mutex_t sum_lock; // Mutex for accesing the sum variable.
+pthread_mutex_t *visit_locks; // Mutex for accesing the visited array.
+
+/* Structure to hold arguments for graph node processing task. */
 typedef struct {
 	int index;
 } process_node_t;
@@ -29,7 +30,7 @@ void os_destroy_arg(void *arg)
 {
 	process_node_t *tmp = (process_node_t *) arg;
 
-	free(tmp);
+	free(tmp); // Free the memory allocated for the task argument
 }
 
 void process_node_function(void *arg)
@@ -40,22 +41,27 @@ void process_node_function(void *arg)
 	// the actual graph node
 	os_node_t *node = graph->nodes[index];
 
+	// Lock the sum mutex, add node's value to sum, and unlock the mutex.
 	pthread_mutex_lock(&sum_lock);
 	sum += node->info;
 	pthread_mutex_unlock(&sum_lock);
 
+	// Iterate over the neighbours of the current node
 	for (unsigned int i = 0; i < node->num_neighbours; ++i) {
 		pthread_mutex_lock(&visit_locks[node->neighbours[i]]);
 
+		// Check if the neighbour node has not been visited
 		if (graph->visited[node->neighbours[i]] == NOT_VISITED) {
 			graph->visited[node->neighbours[i]] = PROCESSING;
 
+			// Allocate and set up the task for processing the neighbour node
 			process_node_t *tmp = (process_node_t *) malloc(sizeof(process_node_t));
 
 			tmp->index = node->neighbours[i];
 
 			os_task_t *task = create_task(process_node_function, (void *) tmp, os_destroy_arg);
 
+			// Update the task count and enqueue the task in the thread pool
 			pthread_mutex_lock(&tp->finished_tasks_mutex);
 			++tp->queued_tasks;
 			pthread_mutex_unlock(&tp->finished_tasks_mutex);
@@ -66,11 +72,15 @@ void process_node_function(void *arg)
 		pthread_mutex_unlock(&visit_locks[node->neighbours[i]]);
 	}
 
+	// Update the graph and thread pool state
 	pthread_mutex_lock(&tp->finished_tasks_mutex);
 
+	pthread_mutex_lock(&visit_locks[index]);
 	graph->visited[index] = DONE;
+	pthread_mutex_unlock(&visit_locks[index]);
+
 	if (--tp->queued_tasks == 0)
-		pthread_cond_signal(&tp->finished_tasks_cond);
+		pthread_cond_signal(&tp->finished_tasks_cond); // Signal if all tasks are done
 
 	pthread_mutex_unlock(&tp->finished_tasks_mutex);
 }
@@ -79,15 +89,18 @@ static void process_node(unsigned int idx)
 {
 	pthread_mutex_lock(&visit_locks[idx]);
 
+	// Check if the current node has not been visited
 	if (graph->visited[idx] == NOT_VISITED) {
 		graph->visited[idx] = PROCESSING;
 
+		// Allocate and set up the task for processing the current node
 		process_node_t *arg = (process_node_t *) malloc(sizeof(process_node_t));
 
 		arg->index = idx;
 
 		os_task_t *task = create_task(process_node_function, (void *) arg, os_destroy_arg);
 
+		// Update the task count and enqueue the task in the thread pool
 		pthread_mutex_lock(&tp->finished_tasks_mutex);
 		++tp->queued_tasks;
 		pthread_mutex_unlock(&tp->finished_tasks_mutex);
@@ -100,6 +113,7 @@ static void process_node(unsigned int idx)
 
 void free_graph(os_graph_t *graph)
 {
+	// Free the memory allocated for the graph
 	for (unsigned int i = 0; i < graph->num_nodes; ++i) {
 		free(graph->nodes[i]->neighbours);
 		free(graph->nodes[i]);
@@ -124,7 +138,6 @@ int main(int argc, char *argv[])
 
 	graph = create_graph_from_file(input_file);
 
-	/* --------------------------- Thread Pool --------------------------- */
 	/* Initialize graph synchronization mechanisms. */
 	tp = create_threadpool(NUM_THREADS);
 
@@ -139,7 +152,11 @@ int main(int argc, char *argv[])
 	wait_for_completion(tp);
 	destroy_threadpool(tp);
 
-	/* --------------------------- Thread Pool --------------------------- */
+	pthread_mutex_destroy(&sum_lock);
+
+	visit_locks = (pthread_mutex_t *) malloc(graph->num_nodes * sizeof(pthread_mutex_t));
+	for (unsigned int i = 0; i < graph->num_nodes; ++i)
+		pthread_mutex_destroy(&visit_locks[i]);
 
 	printf("%d", sum);
 
